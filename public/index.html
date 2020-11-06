@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sim (pensil game)</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="game">
+        <canvas id="canvas" width="600", height="600"></canvas>
+        <div class="menu">
+            <h1>SIM GAME</h1>
+            <div class="options"></div>
+            <div class="count">
+                <p>Count of nodes</p>
+                <input type="number" min="6" value="6" id="nodes">  
+            </div>
+        </div>
+        <div class="reload">
+            <img src="redo-solid.svg" alt="">
+        </div>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/2.3.0/socket.io.js"></script>
+    <script src="main.js"></script>
+</body>
+</html>
