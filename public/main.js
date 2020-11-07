@@ -3,30 +3,53 @@ const socket = io(); let nodes;
 let canvas = document.querySelector("canvas");
 let context = canvas.getContext("2d");
 
-startNewGame();
+listenSocketEvents();
 
-socket.on("is valid move", valid => {
-    if (valid.isValid) {
+function listenSocketEvents() {
 
-        drawLine(valid.move, "red");
-        nodes[valid.move.end].classList.remove("active");
-    }
-})
-
-socket.on("bot move", (move) => {
-    drawLine(move, "blue");
-})
-
-socket.on("game over", playerId => {
-    alert(`Player ${playerId} wins!`);
-})
-
-function startNewGame() {
-    socket.emit("new game");
+    startNewGame();
 
     socket.on("choose level", (options) => {
         handleMenu(options);
     });
+
+    socket.on("draw field", () => { 
+
+        let nodesCount = parseInt(document.querySelector(
+            "#nodes").value);
+
+        if (nodesCount < 6) { nodesCount = 6; }
+
+        hideOptions(); drawNodes(nodesCount);
+        nodes = document.querySelectorAll(".node");
+
+        nodes.forEach((node, nodeIdx) => {
+            
+            node.addEventListener("click", (event) => { 
+                handleNodeClick(event, nodeIdx);
+            })
+        })
+    });
+
+    socket.on("is valid move", valid => {
+        if (valid.isValid) {
+            drawLine(valid.move, "red");
+        }
+        nodes[valid.move.end].classList.remove("active");
+    })
+
+    socket.on("bot move", (move) => {
+        drawLine(move, "blue");
+    })
+
+    socket.on("game over", playerId => {
+        alert(`Player ${playerId} wins!`);
+    })
+
+}
+
+function startNewGame() {
+    socket.emit("new game");
 }
 
 function handleNodeClick(event, nodeIdx) {
@@ -58,28 +81,15 @@ function handleMenu(options) {
                 "#nodes").value);
             
             if (nodesCount < 6) { nodesCount = 6; }
-
-            socket.emit("level", {nodesCount, "levelIdx" : event.target.innerText});
-            socket.on("draw field", () => { 
-
-                hideOptions(); drawNodes(nodesCount);
-                nodes = document.querySelectorAll(".node");
-
-                nodes.forEach((node, nodeIdx) => {
-                    
-                    node.addEventListener("click", (event) => { 
-                        handleNodeClick(event, nodeIdx);
-                    })
-                })
-            });
+            
+            socket.emit("level", {nodesCount, "levelIdx" 
+                : event.target.innerText});
         })
     });
 }
 
 function drawMenu(options) {
     
-    console.log(options);
-
     document.querySelector(".menu").style.display = "";
     let menu = document.querySelector(".options");
 
@@ -170,5 +180,5 @@ document.querySelector("img").onclick = (event) => {
     
     hideOptions(); hideNodes();
     context.clearRect(0, 0, canvas.width, canvas.height);
-    socket.off(); startNewGame();
+    startNewGame();
 };

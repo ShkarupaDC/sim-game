@@ -26,23 +26,25 @@ const levels = new Map([
 io.on("connection", function(socket) {
     console.log("New connection!");
 
+    let game, search, nodesCount, depth;
+
     socket.on("new game", () => {
         socket.emit("choose level", Array.from(levels.keys()));
+    });
 
-        socket.on("level", (params) => {
+    socket.on("level", (params) => {
 
-            nodesCount = params.nodesCount;
-            depth = levels.get(params.levelIdx);
+        nodesCount = params.nodesCount;
+        depth = levels.get(params.levelIdx);
 
-            socket.emit("draw field");
+        socket.emit("draw field");
 
-            const game = new Game(nodesCount);
-            const search = new AlphaBetaSearch(depth);
+        game = new Game(nodesCount);
+        search = new AlphaBetaSearch(depth);
+    });
 
-            socket.on("player move", (move) => {
-                handlePlayerMove(socket, move, game, search);
-            });
-        });
+    socket.on("player move", (move) => {
+        handlePlayerMove(socket, move, game, search);
     });
 
     socket.on("disconnect", () => {
@@ -60,7 +62,7 @@ function handlePlayerMove(socket, move, game, search) {
     if (isValid) {
         game.makeMove(player, start, end);
 
-        if (game.isOver(player)) {
+        if (game.isOver(player, Object.values(move))) {
             socket.emit("game over", bot); return;
         }
 
@@ -70,7 +72,7 @@ function handlePlayerMove(socket, move, game, search) {
         game.makeMove(bot, botmove.start, botmove.end);
         socket.emit("bot move", botmove);
         
-        if (game.isOver(bot)) {
+        if (game.isOver(bot, Object.values(botmove))) {
             socket.emit("game over", player); return;
         }
     }
@@ -84,50 +86,39 @@ class Game {
         this.moves = new Array();
 
         for (let i = 0; i < 2; ++i) {
-            this.moves.push(emptyAdjList(
-                nodesCount));
+            this.moves.push(zeros(nodesCount));
         }
     }
 
     makeMove(playerIdx, start, end) {
 
-        this.moves[playerIdx][start].push(end);
-        this.moves[playerIdx][end].push(start);
+        this.moves[playerIdx][start][end] = 1;
+        this.moves[playerIdx][end][start] = 1;
     }
 
     getPlayersMoves(playerIdx = -1) {
         return !~playerIdx ? this.moves : this.moves[playerIdx];
     }
 
-    isOver(playerIdx) {
-        return Game.isTerminalState(this.moves[playerIdx])
+    isOver(playerIdx, move) {
+        return Game.isTerminalState(this.moves[playerIdx], move);
     }
  
     isValidMove(start, end) {
         
         for (let moves of this.moves) {
-            if (moves[start].includes(end)) {
+            if (moves[start][end]) {
                 return false;
             }
         }
         return true;
     }
 
-    static addMove(state, moves, move) {
-        let [start, end] = move;
-
-        moves[start].push(end);
-        moves[end].push(start);
-
-        Game.updateState(state, start, end);
-    }
-
     static getAllowedMoves(moves) {
         let successors = new Array();
-        
+
         for (let i = 0; i < moves.length; ++i) {
             for (let j = i + 1; j < moves.length; ++j) {        
-                
                 if (moves[i][j] == false) { 
                     successors.push([i, j]);
                 }
@@ -137,62 +128,33 @@ class Game {
     }
 
     static getState(moves) {
-        
-        let nodesCount = moves[0].length;
-        let state = zeros(nodesCount);
-        
-        for (let i = 0; i < nodesCount; ++i) {
-            for (let playerMoves of moves) {
-                for (let j of playerMoves[i]) {
-                    state[i][j] = state[j][i] = 1;
-                }
+        let state = zeros(moves[0].length);
+
+        for (let i = 0; i < moves[0].length; ++i) {
+            for (let j = i + 1; j < moves[0].length; ++j) {
+                state[i][j] = state[j][i] = 
+                    (moves[0][i][j] + moves[1][i][j]) % 2;
             }
         }
         return state;
     }
 
-    static isTerminalState(moves) {
-        let cycleLength = 3;
-        
+    static isTerminalState(moves, move) {
+        let [start, end] = move;
+
         for (let i = 0; i < moves.length; ++i) {
-            let visited = Array(moves.length).fill(false);
-            
-            if (Game.dfs(moves, visited, cycleLength, i, i)) {
+            if (moves[start][i] && moves[end][i]) {
                 return true;
             }
         }
-        return false;
+        return false; 
     }
 
-    static dfs(moves, visited, length, current, begin) {
-        visited[current] = true;
-        
-        if (length == 1) {
-            return moves[current].includes(begin);
-        }
-        
-        for (let node of moves[current]) {
-            if (visited[node] == false) {
-                
-                if (Game.dfs(moves, visited, length - 1,
-                     node, begin)) { return true; }
-            }
-        }
-    }
-
-    static updateState(state, start, end) {
-        
-        state[start][end] ^= 1; 
-        state[end][start] ^= 1;
-    }
-
-    static removeLastMove(state, moves, move) {
+    static updateState(moves, state, move) {
         let [start, end] = move;
-        
-        moves[start].pop();
-        moves[end].pop();
 
-        Game.updateState(state, start, end);
+        moves[start][end] ^= 1; moves[end][start] ^= 1;
+        state[start][end] ^= 1; state[end][start] ^= 1;
     }
 }
 
@@ -208,29 +170,29 @@ class AlphaBetaSearch {
         this.state = Game.getState(moves);
         this.moves = moves;
 
-        this.maxValue(-Infinity, Infinity, current, 0);
+        this.maxValue(-Infinity, Infinity, null, current, 0);
         return this.move;
     }
 
-    maxValue(alpha, beta, current, depth) {
+    maxValue(alpha, beta, prev, current, depth) {
 
-        if (Game.isTerminalState(this.moves[
-            current])) { return 1; }
+        if (depth && Game.isTerminalState(this.moves[current],
+            prev)) { return 1; }
 
         if (depth == this.maxDepth) {
-            return this.eval();
+            return this.heuristicFn();
         } 
 
         current = (current + 1) % 2; 
         let value = -Infinity;
         
         for (let move of Game.getAllowedMoves(this.state)) {
-            this.addMove(current, move);
+            this.updateState(current, move);
             
             value = Math.max(value, this.minValue(
-                alpha, beta, current, depth + 1));
+                alpha, beta, move, current, depth + 1));
 
-            this.removeLastMove(current, move);
+            this.updateState(current, move);
             if (value >= beta) { return value; }
             
             if (value > alpha) {
@@ -242,25 +204,25 @@ class AlphaBetaSearch {
         return value;
     }
 
-    minValue(alpha, beta, current, depth) {
+    minValue(alpha, beta, prev, current, depth) {
 
-        if (Game.isTerminalState(this.moves[
-            current])) { return -1; }
+        if (Game.isTerminalState(this.moves[current],
+             prev)) { return -1; }
 
         if (depth == this.maxDepth) {
-            return this.eval();
+            return this.heuristicFn();
         } 
 
         current = (current + 1) % 2;
         let value = Infinity;
         
         for (let move of Game.getAllowedMoves(this.state)) {
-            this.addMove(current, move);
+            this.updateState(current, move);
             
             value = Math.min(value, this.maxValue(
-                alpha, beta, current, depth + 1));
+                alpha, beta, move, current, depth + 1));
 
-            this.removeLastMove(current, move);
+            this.updateState(current, move);
 
             if (value <= alpha) { return value; }
             beta = Math.min(beta, value);
@@ -269,18 +231,20 @@ class AlphaBetaSearch {
         return value;
     }
 
-    eval() {
-        let cycle = 3, counts = [0, 0];
+    heuristicFn() {
         
-        for (let i = 0; i < this.moves.length; ++i) {
-            for (let j = 0; j < this.moves[i].length; ++j) {
+        let counts = new Array(2).fill(0),
+            nodesCount = this.moves[0].length;
+        
+        for (let i = 0; i < 2; ++i) {
+            for (let j = 0; j < nodesCount; ++j) {
             
-                let visited = Array(this.moves[i].length).fill(false);
-                this.dfs(this.moves[i], visited, cycle, j, j, counts[i]);
+                let visited = new Array(nodesCount).fill(false);
+                this.dfs(this.moves[i], visited, 3, j, j, counts[i]);
             }
         }
-        let value = counts[0] - counts[1];
         
+        let value = counts[0] - counts[1];
         return value > 0 ? 0.5 : -0.5;
     }
 
@@ -288,29 +252,21 @@ class AlphaBetaSearch {
         visited[current] = true;
         
         if (length == 1) {
-            if (!this.state[current][begin]) {
-                 count++; 
-            }
+            if (!this.state[current][begin]) { count++; }
             return;
         }
-        
-        for (let node of moves[current]) {
-            if (!visited[node]) {
-                Game.dfs(moves, visited, length - 1, node, begin); 
+
+        for (let i = 0; i < moves.length; ++i) {
+            if (!visited[i] && moves[current][i]) {
+                this.dfs(moves, visited, length - 1, i, begin); 
             }
         }
     }
 
-    addMove(current, move) {
+    updateState(current, move) {
         
-        return Game.addMove(this.state,
-          this.moves[current], move);
-    }
-
-    removeLastMove(current, move) {
-        
-        return Game.removeLastMove(this.state,
-            this.moves[current], move);
+        return Game.updateState(this.moves[current],
+             this.state, move);
     }
 }
 
@@ -318,15 +274,4 @@ function zeros(length) {
     
     return new Array(length).fill(null).map(() =>
         new Array(length).fill(0));
-}
-
-function emptyAdjList(length) {
-    
-    return new Array(length).fill(null).map(() => []);
-}
-
-function printAdjList(moves) {
-    for (let i = 0; i < moves.length; ++i) {
-        console.log(moves[i]);
-    }
 }
