@@ -49,17 +49,17 @@ function handleMenu(options) {
     drawMenu(options);
     let levels = document.querySelectorAll(".option");
 
-    levels.forEach((level, levelIdx) => {
+    levels.forEach((level) => {
 
         level.addEventListener("click", (event) => {
             event.preventDefault();
-            
+
             let nodesCount = parseInt(document.querySelector(
                 "#nodes").value);
             
             if (nodesCount < 6) { nodesCount = 6; }
 
-            socket.emit("level", {nodesCount, levelIdx});
+            socket.emit("level", {nodesCount, "levelIdx" : event.target.innerText});
             socket.on("draw field", () => { 
 
                 hideOptions(); drawNodes(nodesCount);
@@ -170,6 +170,5 @@ document.querySelector("img").onclick = (event) => {
     
     hideOptions(); hideNodes();
     context.clearRect(0, 0, canvas.width, canvas.height);
-    socket.emit("reload");
-    startNewGame();
+    socket.off(); startNewGame();
 };
